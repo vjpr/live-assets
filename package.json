@@ -6,9 +6,9 @@
     "name": "Vaughan Rouesnel",
     "email": "vrouesnel@gmail.com"
   },
-  "version": "0.0.1",
+  "version": "0.1.0",
   "dependencies": {
-    "mincer": "git://github.com/nodeca/mincer.git#master"
+    "mincer": ">= 0.4.1"
   },
-  "main": "main.js"
+  "main": "assets.coffee"
 }
