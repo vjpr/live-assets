@@ -1,6 +1,6 @@
 {
   "name": "live-assets",
-  "description": "Rails Asset Pipeline for Node",
+  "description": "Rails Asset Pipeline for Node.js",
   "url": "http://vjpr.github.com/live-assets",
   "author": {
     "name": "Vaughan Rouesnel",
