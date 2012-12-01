@@ -1,7 +1,7 @@
 {
-  "name": "pastry",
+  "name": "live-assets",
   "description": "Rails Asset Pipeline for Node",
-  "url": "http://vjpr.github.com/pastry",
+  "url": "http://vjpr.github.com/live-assets",
   "author": {
     "name": "Vaughan Rouesnel",
     "email": "vrouesnel@gmail.com"
@@ -10,5 +10,5 @@
   "dependencies": {
     "mincer": "git://github.com/nodeca/mincer.git#master"
   },
-  "main": "pastry.js"
+  "main": "main.js"
 }
