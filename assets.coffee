@@ -177,13 +177,18 @@ class Assets
     else
       return _handleLogicalPathNotFoundError pathname
 
-  attachRoutes: (app) =>
-    # Make locals accessible to dynamic templates
-    app.use (req, res, next) =>
+  # Make locals accessible to dynamic templates
+  locals: =>
+    (req, res, next) =>
       _.extend res.locals, @getHelpers()
       next()
-    # Serve assets over HTTP
-    app.use @opts.localServePath, Mincer.createServer @env
+
+  # Serve assets over HTTP
+  middleware: (app) =>
+    unless @server?
+      @server = Mincer.createServer @env
+    app.use @locals()
+    app.use @opts.localServePath, @server
 
   # Helpers
   # -------
