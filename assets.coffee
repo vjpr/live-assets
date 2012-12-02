@@ -23,16 +23,17 @@ class Assets
       assetServePath: 'http://localhost:3000/assets'
       # The path where Mincer serves assets from in development.
       localServePath: '/assets'
+      files: null
     @expandTags = @opts.expandTags
     @digest = @opts.digest
 
     # Whether we are using uploaded assets. This is determined only after
     # running useUploadedAssets() which may fail and fallback to cached assets.
-    @usingUploadedAssets = null
+    @usingUploadedAssets = false
 
     # Configure logging.
     Mincer.logger.use @opts.logger
-    logger = @opts.logger
+    @logger = @opts.logger
 
     # TODO: I think we can get rid of this because it was fixed upstream.
     #Mincer.unregisterPostProcessor 'application/javascript', Mincer.SafetyColons
@@ -53,18 +54,21 @@ class Assets
     @setMinifyBuilds @opts.minify
 
   # Serve in-memory cached assets and use their digests
-  usePrecompiledAssets: =>
+  usePrecompiledAssets: (cb) =>
+    unless @opts.files?
+      return new Error 'Specify `files` as an option to allow precompiling.'
     # Ensure assets have been precompiled
     start = new Date()
     @logger.info "Precompile assets: started"
     @env = @env.index
-    @env.precompile clientFiles.concat(webFiles), (err, data) =>
-      throw err if err
+    @env.precompile @opts.files, (err, data) =>
+      return cb err if err
       duration = (new Date() - start) / 1000
       @logger.info "Precompile assets: finished in #{durations}s"
       # Serve precompiled assets from Mincer server
       @logger.info "Now serving server-compiled in-memory cached assets"
       # Index#findAssets caches assets on first use
+      cb()
 
   # Use digests from uploaded `manifest.json` file
   useUploadedAssets: =>
@@ -75,18 +79,23 @@ class Assets
     else
       @logger.warn "Could not find manifest.json. Reverting to cached."
       @usingUploadedAssets = false
-      @usePrecompiledAssets()
+      @usePrecompiledAssets (err) =>
+        @logger.error err if err
 
   # Precompile assets for development. Required because templating is
   # not asynchronous which prevents expanded tags until asset is compiled.
-  precompileForDevelopment: =>
+  precompileForDevelopment: (cb) =>
+    unless @opts.files?
+      return new Error 'Specify `files` as an option to allow precompiling.'
     start = new Date()
-    @logger.info "Precompile client: started"
-    @env.precompile clientFiles.concat(webFiles), (err, data) ->
+    @logger.info "Precompile: started"
+    @env.precompile @opts.files, (err, data) =>
       if err
-        return @logger.debug "Precompile client: #{'failed'.red}"
+        @logger.error "Precompile: #{'failed'.red}"
+        return cb err
       duration = (new Date() - start) / 1000
-      @logger.info "Precompile client: finished in #{duration}s"
+      @logger.info "Precompile: finished in #{duration}s"
+      cb()
 
   # This could be monkey-patched as findAsset() potentially. Although this would
   # need to return an `Asset` object which is tricky and error-prone.
