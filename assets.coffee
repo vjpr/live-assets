@@ -54,7 +54,7 @@ class Assets
     @setMinifyBuilds @opts.minify
 
   # Serve in-memory cached assets and use their digests
-  usePrecompiledAssets: (cb) =>
+  useInMemoryCachedAssets: (cb) =>
     unless @opts.files?
       return new Error 'Specify `files` as an option to allow precompiling.'
     # Ensure assets have been precompiled
@@ -79,7 +79,7 @@ class Assets
     else
       @logger.warn "Could not find manifest.json. Reverting to cached."
       @usingUploadedAssets = false
-      @usePrecompiledAssets (err) =>
+      @useInMemoryCachedAssets (err) =>
         @logger.error err if err
 
   # Precompile assets for development. Required because templating is
