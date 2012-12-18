@@ -42,6 +42,7 @@ class Assets
     @env = new Mincer.Environment @opts.root
     @setupPaths()
     @setupHelpers()
+    @setMinifyBuilds @opts.minify
 
     # Precompiled Assets
     # ------------------
@@ -50,8 +51,6 @@ class Assets
     # TODO: This should really be a flag somewhere.
     if @opts.usePrecompiledAssets
       @useUploadedAssets()
-
-    @setMinifyBuilds @opts.minify
 
   # Serve in-memory cached assets and use their digests
   useInMemoryCachedAssets: (cb) =>
@@ -64,7 +63,7 @@ class Assets
     @env.precompile @opts.files, (err, data) =>
       return cb err if err
       duration = (new Date() - start) / 1000
-      @logger.info "Precompile assets: finished in #{durations}s"
+      @logger.info "Precompile assets: finished in #{duration}s"
       # Serve precompiled assets from Mincer server
       @logger.info "Now serving server-compiled in-memory cached assets"
       # Index#findAssets caches assets on first use
