@@ -12,6 +12,7 @@ class Assets
     # Process options.
     _.defaults @opts,
       logger: console
+      mincerLogger: console
       root: process.cwd()
       digest: false
       expandTags: true
@@ -24,6 +25,11 @@ class Assets
       # The path where Mincer serves assets from in development.
       localServePath: '/assets'
       files: null
+      # If a helper tag causes an error, how should we display it?
+      inPageErrorFormat: 'html' # Options: popup | html | none
+      # If a helper tag causes an error, should we display a message
+      # for the developer or the production user?
+      inPageErrorVerbosity: 'dev' # Options dev | prod
     @expandTags = @opts.expandTags
     @digest = @opts.digest
 
@@ -32,7 +38,7 @@ class Assets
     @usingUploadedAssets = false
 
     # Configure logging.
-    Mincer.logger.use @opts.logger
+    Mincer.logger.use @opts.mincerLogger
     @logger = @opts.logger
 
     # TODO: I think we can get rid of this because it was fixed upstream.
@@ -83,6 +89,10 @@ class Assets
 
   # Precompile assets for development. Required because templating is
   # not asynchronous which prevents expanded tags until asset is compiled.
+  #
+  # IMPORTANT: You must handle the callback otherwise you will receive a
+  # popup box on your webpage informing you that a file is not compiled,
+  # but not letting you know what prevented it from compiling.
   precompileForDevelopment: (cb) =>
     unless @opts.files?
       return new Error 'Specify `files` as an option to allow precompiling.'
@@ -161,7 +171,7 @@ class Assets
           else
             cb null, asset.logicalPath
         else
-          cb null, _handleLogicalPathNotFoundError pathname
+          cb null, @_handleLogicalPathNotFoundError pathname
 
   # TODO: Try and move to assetPathAsync in the future.
   # This function is very broken, we don't actually use digests for most assets
@@ -183,7 +193,7 @@ class Assets
       else
         return asset.logicalPath
     else
-      return _handleLogicalPathNotFoundError pathname
+      return @_handleLogicalPathNotFoundError pathname
 
   # Make locals accessible to dynamic templates
   locals: =>
@@ -242,11 +252,11 @@ class Assets
       if cb?
         @_findAssetPaths logicalPath, @expandTags, (err, paths) =>
           return cb err if err
-          return cb _handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
+          return cb @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
           cb null, processPaths paths, logicalPath, mimetype, tmpl, opts
       else
         paths = @_findAssetPathsSync logicalPath, @expandTags
-        return _handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
+        return @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
         processPaths paths, logicalPath, mimetype, tmpl, opts
 
     js: (logicalPath, cb) =>
@@ -301,8 +311,11 @@ class Assets
     # Precompile asset.
     if not asset.isCompiled
       msg = "#{logicalPath} is not compiled.\n" +
-        "Precompile your assets before rendering your templates or " +
-        "use the async version of this method with async templates."
+        "You must precompile your assets before rendering a webpage.\n" +
+        "1. There may have been an error during precompilation. Check your logs.\n" +
+        "2. You may not be handling the callback from method `precompileForDevelopment` and precompilation is failing silently. You should handle this callback.\n" +
+        "3. You are not precompiling your assets before rendering your templates. Use the method `precompileForDevelopment` before rendering a view.\n" +
+        "4. If you do not want to precompile before each request you must use the async version of this method with an async templating library (which are hard to find)."
       return new Error msg
     else
       @_processAssetPaths logicalPath, asset, includeDependencies
@@ -335,18 +348,45 @@ class Assets
   _prefixPathWithServePath: (paths) =>
     (@opts.assetServePath + p for p in paths)
 
-_handleLogicalPathNotFoundError = (logicalPath, fileType = 'The', err, opts) ->
-  if err instanceof Error
-    return err if opts.pathsOnly
-    # Replace new lines with literal new lines.
-    err = err.toString().replace /(\r\n|\n|\r)/gm, '\\n\\n'
-    msg = "#{fileType} file #{JSON.stringify(logicalPath)} caused error: \\n\\n#{err}"
-    return "<script type='application/javascript'>alert('#{msg}')</script>"
-  # this will help us notify that given logicalPath is not found
-  # without "breaking" view renderer
-  # TODO: Escape logicalPath - see mincer issue
-  msg = "#{fileType} file #{JSON.stringify(logicalPath)} not found."
-  return err if opts.pathsOnly
-  return "<script type='application/javascript'>alert('#{msg}')</script>"
+  _handleLogicalPathNotFoundError: (logicalPath, fileType = 'The', err) ->
+
+    if err instanceof Error
+      return err if @opts.pathsOnly
+      # Replace new lines with literal new lines.
+      err = err.toString().replace /(\r\n|\n|\r)/gm, '\\n\\n'
+      msg = "#{fileType} file #{logicalPath} caused error: \\n\\n#{err}"
+
+      return if @opts.inPageErrorFormat is 'none'
+      if @opts.inPageErrorFormat is 'html'
+
+        htmlMsg = if @opts.inPageErrorVerbosity is 'dev'
+          "<pre style='margin: 20px'>#{msg}</p><hr>"
+        else
+          msg = "There was a problem loading file <strong>#{logicalPath}</strong>."
+          "<pre style='margin: 20px'>#{msg}</div><hr>"
+
+        return """
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+        <script type='application/javascript'>
+          $(document).ready(function () {
+            if (!$('#live-assets-error').length) {
+              $('body').html("<div id='live-assets-error'><h2 style='margin: 20px'>An error occurred while loading this page. Please check back shortly.</h1></div>")
+            }
+            el = $('#live-assets-error').append("#{htmlMsg}");
+          });
+        </script>
+        """
+      else
+        # TODO: Might deprecate this error format in the future because it is annoying.
+        return "<script type='application/javascript'>alert('#{msg}')</script>"
+
+    else
+
+      # This will help us notify that given logicalPath is not found
+      # without "breaking" view renderer
+      # TODO: Escape logicalPath - see mincer issue
+      msg = "#{fileType} file #{JSON.stringify(logicalPath)} not found."
+      return err if @opts.pathsOnly
+      return "<script type='application/javascript'>alert('#{msg}')</script>"
 
 module.exports = Assets
