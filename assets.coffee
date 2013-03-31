@@ -17,6 +17,8 @@ class Assets
       digest: false
       expandTags: true
       usePrecompiledAssets: false
+      # The directory which is searched for uploaded precompiled assets.
+      # If the assets are not found here then we precompile assets on server.
       remoteAssetsDir: ''
       helpers: {} # Helper methods for templates.
       minify: false
@@ -58,14 +60,13 @@ class Assets
     if @opts.usePrecompiledAssets
       @useUploadedAssets()
 
-  # Serve in-memory cached assets and use their digests
+  # Serve in-memory cached assets and use their digests.
   useInMemoryCachedAssets: (cb) =>
     unless @opts.files?
       return new Error 'Specify `files` as an option to allow precompiling.'
     # Ensure assets have been precompiled
     start = new Date()
     @logger.info "Precompile assets: started"
-    @env = @env.index
     @env.precompile @opts.files, (err, data) =>
       return cb err if err
       duration = (new Date() - start) / 1000
@@ -73,9 +74,11 @@ class Assets
       # Serve precompiled assets from Mincer server
       @logger.info "Now serving server-compiled in-memory cached assets"
       # Index#findAssets caches assets on first use
+      # Cache all compiled assets.
+      @env = @env.index
       cb()
 
-  # Use digests from uploaded `manifest.json` file
+  # Use digests from uploaded `manifest.json` file.
   useUploadedAssets: =>
     if fs.existsSync path.join @opts.remoteAssetsDir, 'manifest.json'
       @logger.info "Now serving uploaded assets from " + @opts.remoteAssetsDir
