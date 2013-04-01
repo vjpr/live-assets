@@ -32,6 +32,9 @@ class Assets
       # If a helper tag causes an error, should we display a message
       # for the developer or the production user?
       inPageErrorVerbosity: 'dev' # Options dev | prod
+      # Once we run `useInMemoryCachedAssets` we cannot modify the environment.
+      # This callback runs just after we create the Mincer environment.
+      afterEnvironmentCreated: ->
     @expandTags = @opts.expandTags
     @digest = @opts.digest
 
@@ -48,6 +51,10 @@ class Assets
 
     # This is the mincer environment.
     @env = new Mincer.Environment @opts.root
+
+    # Allow user to modify the environment before we make our modifications.
+    @opts.afterEnvironmentCreated.apply @
+
     @setupPaths()
     @setupHelpers()
     @setMinifyBuilds @opts.minify
@@ -64,18 +71,18 @@ class Assets
   useInMemoryCachedAssets: (cb) =>
     unless @opts.files?
       return new Error 'Specify `files` as an option to allow precompiling.'
+    # Cache all compiled assets.
+    @env = @env.index
     # Ensure assets have been precompiled
     start = new Date()
-    @logger.info "Precompile assets: started"
+    @logger.debug "Precompile assets: started"
     @env.precompile @opts.files, (err, data) =>
       return cb err if err
       duration = (new Date() - start) / 1000
-      @logger.info "Precompile assets: finished in #{duration}s"
+      @logger.debug "Precompile assets: finished in #{duration}s"
       # Serve precompiled assets from Mincer server
       @logger.info "Now serving server-compiled in-memory cached assets"
       # Index#findAssets caches assets on first use
-      # Cache all compiled assets.
-      @env = @env.index
       cb()
 
   # Use digests from uploaded `manifest.json` file.
