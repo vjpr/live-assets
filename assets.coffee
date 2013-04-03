@@ -69,7 +69,7 @@ class Assets
     # Also, when running staging locally we use precompiled assets.
     # TODO: This should really be a flag somewhere.
     if @opts.usePrecompiledAssets
-      @useUploadedAssets @opts.afterAssetsReady()
+      @useUploadedAssets @opts.afterAssetsReady
     else
       @opts.afterAssetsReady()
 
