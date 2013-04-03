@@ -35,6 +35,10 @@ class Assets
       # Once we run `useInMemoryCachedAssets` we cannot modify the environment.
       # This callback runs just after we create the Mincer environment.
       afterEnvironmentCreated: ->
+      # Fired when assets have been precompiled when we are precompiling and also
+      # when the environment is ready if we are not precompiling.
+      # This is useful during testing.
+      afterAssetsReady: ->
     @expandTags = @opts.expandTags
     @digest = @opts.digest
 
@@ -65,7 +69,9 @@ class Assets
     # Also, when running staging locally we use precompiled assets.
     # TODO: This should really be a flag somewhere.
     if @opts.usePrecompiledAssets
-      @useUploadedAssets()
+      @useUploadedAssets @opts.afterAssetsReady()
+    else
+      @opts.afterAssetsReady()
 
   # Serve in-memory cached assets and use their digests.
   useInMemoryCachedAssets: (cb) =>
@@ -86,16 +92,18 @@ class Assets
       cb()
 
   # Use digests from uploaded `manifest.json` file.
-  useUploadedAssets: =>
+  useUploadedAssets: (assetsReady) =>
     if fs.existsSync path.join @opts.remoteAssetsDir, 'manifest.json'
       @logger.info "Now serving uploaded assets from " + @opts.remoteAssetsDir
       @usingUploadedAssets = true
       @manifest = new Mincer.Manifest @env, @opts.remoteAssetsDir
+      assetsReady()
     else
       @logger.warn "Could not find manifest.json. Reverting to cached."
       @usingUploadedAssets = false
       @useInMemoryCachedAssets (err) =>
-        @logger.error err if err
+        return @logger.error err if err
+        assetsReady()
 
   # Precompile assets for development. Required because templating is
   # not asynchronous which prevents expanded tags until asset is compiled.
