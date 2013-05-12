@@ -8,7 +8,7 @@
   },
   "version": "0.1.10",
   "dependencies": {
-    "mincer": ">= 0.4.1"
+    "mincer": "git://github.com/vjpr/mincer.git#latest"
   , "uglify-js": ">= 2.2.1"
   , "csso": ">= 1.3.6"
   },
