@@ -8,9 +8,12 @@
   },
   "version": "0.1.10",
   "dependencies": {
-    "mincer": "git://github.com/vjpr/mincer.git#latest"
-  , "uglify-js": ">= 2.2.1"
-  , "csso": ">= 1.3.6"
+    "mincer": "git://github.com/vjpr/mincer.git#latest",
+    "uglify-js": "~2.3.6",
+    "clean-css": "~1.0.10"
+  },
+  "peerDependencies": {
+    "underscore": "*"
   },
   "main": "assets.coffee"
 }

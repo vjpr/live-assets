@@ -3,7 +3,7 @@ Mincer    = require 'mincer'
 path      = require 'path'
 fs        = require 'fs'
 UglifyJS  = require 'uglify-js'
-Csso      = require 'csso'
+cleanCSS  = require 'clean-css'
 
 class Assets
 
@@ -52,6 +52,9 @@ class Assets
 
     # TODO: I think we can get rid of this because it was fixed upstream.
     #Mincer.unregisterPostProcessor 'application/javascript', Mincer.SafetyColons
+
+    # Handle woff fonts.
+    Mincer.registerMimeType 'application/font-woff', 'woff'
 
     # This is the mincer environment.
     @env = new Mincer.Environment @opts.root
@@ -160,15 +163,13 @@ class Assets
   setupCompressors: =>
     @env.jsCompressor = (context, data, callback) ->
       try
-        ast = UglifyJS.parser.parse(data)
-        ast = UglifyJS.uglify.ast_mangle(ast)
-        ast = UglifyJS.uglify.ast_squeeze(ast)
-        callback null, UglifyJS.uglify.gen_code(ast)
+        result = UglifyJS.minify data, fromString: true
+        callback null, result.code
       catch err
         callback err
     @env.cssCompressor = (context, data, callback) ->
       try
-        callback null, Csso.justDoIt(data)
+        callback null, cleanCSS.process(data)
       catch err
         callback err
 
