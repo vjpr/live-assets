@@ -2,8 +2,6 @@ _         = require 'underscore'
 Mincer    = require 'mincer'
 path      = require 'path'
 fs        = require 'fs'
-UglifyJS  = require 'uglify-js'
-cleanCSS  = require 'clean-css'
 
 class Assets
 
@@ -155,23 +153,11 @@ class Assets
   setMinifyBuilds: (bool) =>
     if bool
       @setupCompressors()
-    else
-      @env.jsCompressor = null
-      @env.cssCompressor = null
 
-  # Enable compression when minifying builds.
+  # Enables compression. Used for minifying builds.
   setupCompressors: =>
-    @env.jsCompressor = (context, data, callback) ->
-      try
-        result = UglifyJS.minify data, fromString: true
-        callback null, result.code
-      catch err
-        callback err
-    @env.cssCompressor = (context, data, callback) ->
-      try
-        callback null, cleanCSS.process(data)
-      catch err
-        callback err
+    @env.jsCompressor = 'uglify'
+    @env.cssCompressor = 'csso'
 
   # ---
 
@@ -285,7 +271,8 @@ class Assets
 
     css: (logicalPath, cb) =>
       mimetype = 'text/css'
-      tmpl = "<link rel='stylesheet' type='text/css' href='<%= path %>'></link>"
+      # NOTE: The suppress is only there for IntelliJ to disable faulty inspection.
+      tmpl = "<!--suppress HtmlExtraClosingTag --><link rel='stylesheet' type='text/css' href='<%= path %>'></link>"
       return getPaths logicalPath, mimetype, tmpl, {}, cb
 
     # Get path to a single asset.
@@ -327,29 +314,22 @@ class Assets
     return [@getDigestPathFromManifest(logicalPath)] if @usingUploadedAssets
     asset = @env.findAsset(logicalPath)
     return null if not asset
-    # Precompile asset.
-    if not asset.isCompiled
-      msg = "#{logicalPath} is not compiled.\n" +
-        "You must precompile your assets before rendering a webpage.\n" +
-        "1. There may have been an error during precompilation. Check your logs.\n" +
-        "2. You may not be handling the callback from method `precompileForDevelopment` and precompilation is failing silently. You should handle this callback.\n" +
-        "3. You are not precompiling your assets before rendering your templates. Use the method `precompileForDevelopment` before rendering a view.\n" +
-        "4. If you do not want to precompile before each request you must use the async version of this method with an async templating library (which are hard to find)."
-      return new Error msg
-    else
-      @_processAssetPaths logicalPath, asset, includeDependencies
+    @_processAssetPaths logicalPath, asset, includeDependencies
 
   # STATIC!
   _processAssetPaths: (logicalPath, asset, includeDependencies) ->
     paths = []
+
+    # TODO: Asset compilation is now synchronous. Can probably remove
+    #   the lines below.
 
     # The problem is that the asset dependencies are not known until
     # compile. Since compile is async and templating is sync, we have
     # to wait until assets are compiled before serving templates.
     # TODO: Get asset dependencies synchronously.
 
-    if includeDependencies and not asset.isCompiled
-      @logger.warn "#{logicalPath} is not compiled yet"
+    #if includeDependencies and not asset.isCompiled
+    #  @logger.warn "#{logicalPath} is not compiled yet"
 
     # Use this line if you want to serve the unexpanded tag in the meantime.
     #if includeDependencies and asset.isCompiled
