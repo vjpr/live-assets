@@ -2,6 +2,7 @@
 _         = require 'underscore'
 path      = require 'path'
 fs        = require 'fs'
+os        = require 'os'
 #endregion
 
 class Assets
