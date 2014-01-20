@@ -1,7 +1,8 @@
+#region Imports
 _         = require 'underscore'
-Mincer    = require 'mincer'
 path      = require 'path'
 fs        = require 'fs'
+#endregion
 
 class Assets
 
@@ -9,6 +10,9 @@ class Assets
 
     # Process options.
     _.defaults @opts,
+      # Files are only used to warm up the cache when using Mincer server in
+      # Index mode.
+      files: null
       logger: console
       mincerLogger: console
       root: process.cwd()
@@ -24,7 +28,6 @@ class Assets
       assetServePath: 'http://localhost:3000/assets'
       # The path where Mincer serves assets from in development.
       localServePath: '/assets'
-      files: null
       # If a helper tag causes an error, how should we display it?
       inPageErrorFormat: 'html' # Options: popup | html | none
       # If a helper tag causes an error, should we display a message
@@ -37,6 +40,9 @@ class Assets
       # when the environment is ready if we are not precompiling.
       # This is useful during testing.
       afterAssetsReady: ->
+      # Must pass in Mincer. For `npm link` to work properly.
+      Mincer: null
+
     @expandTags = @opts.expandTags
     @digest = @opts.digest
 
@@ -45,17 +51,17 @@ class Assets
     @usingUploadedAssets = false
 
     # Configure logging.
-    Mincer.logger.use @opts.mincerLogger
+    @opts.Mincer.logger.use @opts.mincerLogger
     @logger = @opts.logger
 
     # TODO: I think we can get rid of this because it was fixed upstream.
-    #Mincer.unregisterPostProcessor 'application/javascript', Mincer.SafetyColons
+    @opts.Mincer.unregisterPostProcessor 'application/javascript', @opts.Mincer.SafetyColons
 
     # Handle woff fonts.
-    Mincer.registerMimeType 'application/font-woff', 'woff'
+    @opts.Mincer.registerMimeType 'application/font-woff', 'woff'
 
     # This is the mincer environment.
-    @env = new Mincer.Environment @opts.root
+    @env = new @opts.Mincer.Environment @opts.root
 
     # Allow user to modify the environment before we make our modifications.
     @opts.afterEnvironmentCreated.apply @
@@ -83,7 +89,10 @@ class Assets
     # Ensure assets have been precompiled
     start = new Date()
     @logger.debug "Precompile assets: started"
-    @env.precompile @opts.files, (err, data) =>
+
+    # Now that Mincer is sync there is no precompile method.
+    tmpDir = path.join os.tmpDir(), 'sidekick-precompile-cache'
+    @compile @opts.files, tmpDir, @opts.servePath, (err, data) =>
       return cb err if err
       duration = (new Date() - start) / 1000
       @logger.debug "Precompile assets: finished in #{duration}s"
@@ -97,7 +106,7 @@ class Assets
     if fs.existsSync path.join @opts.remoteAssetsDir, 'manifest.json'
       @logger.info "Now serving uploaded assets from " + @opts.remoteAssetsDir
       @usingUploadedAssets = true
-      @manifest = new Mincer.Manifest @env, @opts.remoteAssetsDir
+      @manifest = new @opts.Mincer.Manifest @env, @opts.remoteAssetsDir
       assetsReady()
     else
       @logger.warn "Could not find manifest.json. Reverting to cached."
@@ -106,6 +115,8 @@ class Assets
         return @logger.error err if err
         assetsReady()
 
+  # NOTE: Asset compilation is now synchronous so this is not necessary.
+  #
   # Precompile assets for development. Required because templating is
   # not asynchronous which prevents expanded tags until asset is compiled.
   #
@@ -113,17 +124,18 @@ class Assets
   # popup box on your webpage informing you that a file is not compiled,
   # but not letting you know what prevented it from compiling.
   precompileForDevelopment: (cb) =>
-    unless @opts.files?
-      return new Error 'Specify `files` as an option to allow precompiling.'
-    start = new Date()
-    @logger.info "Precompile: started"
-    @env.precompile @opts.files, (err, data) =>
-      if err
-        @logger.error "Precompile: #{'failed'.red}"
-        return cb err
-      duration = (new Date() - start) / 1000
-      @logger.info "Precompile: finished in #{duration}s"
-      cb()
+    return cb()
+    #unless @opts.files?
+    #  return new Error 'Specify `files` as an option to allow precompiling.'
+    #start = new Date()
+    #@logger.info "Precompile: started"
+    #@env.precompile @opts.files, (err, data) =>
+    #  if err
+    #    @logger.error "Precompile: #{'failed'.red}"
+    #    return cb err
+    #  duration = (new Date() - start) / 1000
+    #  @logger.info "Precompile: finished in #{duration}s"
+    #  cb()
 
   # This could be monkey-patched as findAsset() potentially. Although this would
   # need to return an `Asset` object which is tricky and error-prone.
@@ -140,7 +152,7 @@ class Assets
 
   getEnvironment: => @env
 
-  getMincer: => Mincer
+  getMincer: => @opts.Mincer
 
   setupPaths: =>
     unless @opts.paths?.length
@@ -182,15 +194,7 @@ class Assets
   # This function is very broken, we don't actually use digests for most assets
   # so things seem like they work.
   assetPathSync: (pathname, cb) =>
-    asset = @env.findAsset(pathname)
-    if not asset.isCompiled
-      asset.compile (err, result) ->
-        throw err if err
-        # TODO: There is no guarantee that we get the correct digest
-        #   because of async compile. Seems to work so far but its very
-        #   bad. Need to use async .ejs templating engine.
-        #   Possibly use dependOnAsset at top of file.
-        #   Template needs to be rendered asynchronously.
+    asset = @env.findAsset pathname
     if asset
       # We don't return digests for html pages and when compiling extension
       if @_shouldAppendDigest asset
@@ -199,6 +203,14 @@ class Assets
         return asset.logicalPath
     else
       return @_handleLogicalPathNotFoundError pathname
+
+  # Because of circular dependencies. For use in extension manifest.
+  assetPathSyncNoCompile: (pathname, cb) =>
+    # TODO: Is this okay? Check if Mincer does other things.
+    @env.attributesFor(pathname).pathname
+    #pathname
+    #asset = @env.resolve pathname
+    #return asset
 
   # Make locals accessible to dynamic templates
   locals: =>
@@ -209,7 +221,7 @@ class Assets
   # Serve assets over HTTP
   middleware: (app) =>
     unless @server?
-      @server = Mincer.createServer @env
+      @server = @opts.Mincer.createServer @env
     app.use @locals()
     app.use @opts.localServePath, @server
 
@@ -233,7 +245,9 @@ class Assets
           cb null, "url(#{result})"
       assetPath: @assetPathSync
       assetPathAsync: @assetPathAsync
+      assetPathNoCompile: @assetPathSyncNoCompile
       mincerEnv: => @env
+      assetDir: (a) => path.dirname @assetPathSync a
 
   # If a callback is passed in, we run an async version.
   clientHelper: =>
@@ -253,41 +267,31 @@ class Assets
       else
         return (tmpl(path: p) for p in paths).join('\n')
 
-    getPaths = (logicalPath, mimetype, tmpl, opts, cb) =>
-      if cb?
-        @_findAssetPaths logicalPath, @expandTags, (err, paths) =>
-          return cb err if err
-          return cb @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
-          cb null, processPaths paths, logicalPath, mimetype, tmpl, opts
-      else
-        paths = @_findAssetPathsSync logicalPath, @expandTags
-        return @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
-        processPaths paths, logicalPath, mimetype, tmpl, opts
+    getPaths = (logicalPath, mimetype, tmpl, opts) =>
+      # TODO: Only search for asset of certain mimetype.
+      paths = @_findAssetPathsSync logicalPath, @expandTags
+      return @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
+      processPaths paths, logicalPath, mimetype, tmpl, opts
 
-    js: (logicalPath, cb) =>
+    js: (logicalPath) =>
       mimetype = 'application/javascript'
       tmpl = "<script type='application/javascript' src='<%= path %>'></script>"
-      return getPaths logicalPath, mimetype, tmpl, {}, cb
+      return getPaths logicalPath, mimetype, tmpl, {}
 
-    css: (logicalPath, cb) =>
+    css: (logicalPath) =>
       mimetype = 'text/css'
       # NOTE: The suppress is only there for IntelliJ to disable faulty inspection.
-      tmpl = "<!--suppress HtmlExtraClosingTag --><link rel='stylesheet' type='text/css' href='<%= path %>'></link>"
-      return getPaths logicalPath, mimetype, tmpl, {}, cb
+      tmpl = "<link rel='stylesheet' type='text/css' href='<%= path %>'></link>"
+      return getPaths logicalPath, mimetype, tmpl, {}
 
     # Get path to a single asset.
-    asset: (logicalPath, cb) =>
+    asset: (logicalPath) =>
       mimetype = 'Asset'
-      if cb?
-        getPaths logicalPath, mimetype, null, {pathsOnly: true}, (err, paths) =>
-          return cb err if err
-          cb null, paths[0]
-      else
-        ret = getPaths logicalPath, mimetype, null, {pathsOnly: true}
-        ret[0]
+      ret = getPaths logicalPath, mimetype, null, {pathsOnly: true}
+      ret[0]
 
   compile: (files, dest, servePath, cb) =>
-    manifest = new Mincer.Manifest @env, dest
+    manifest = new @opts.Mincer.Manifest @env, dest
     manifest.compile files, (err, data) ->
       return cb err if err
       cb err, data
@@ -297,18 +301,6 @@ class Assets
 
   # Take a logical path and return the path to itself and optionally,
   # its dependencies.
-
-  _findAssetPaths: (logicalPath, includeDependencies = false, cb) =>
-    return cb(null, [@getDigestPathFromManifest(logicalPath)]) if @usingUploadedAssets
-    asset = @env.findAsset(logicalPath)
-    return cb(new Error "Asset '#{logicalPath}' not found") if not asset
-    # Precompile asset.
-    if not asset.isCompiled
-      asset.compile (err, data) =>
-        return cb(new Error "Could not compile asset #{logicalPath}") if err
-        cb null, @_processAssetPaths logicalPath, asset, includeDependencies
-    else
-      cb null, @_processAssetPaths logicalPath, asset, includeDependencies
 
   _findAssetPathsSync: (logicalPath, includeDependencies = false) =>
     return [@getDigestPathFromManifest(logicalPath)] if @usingUploadedAssets

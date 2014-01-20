@@ -8,9 +8,9 @@
   },
   "version": "0.1.10-1",
   "dependencies": {
-    "mincer": "git://github.com/vjpr/mincer.git#latest",
     "uglify-js": "~2.3.6",
-    "clean-css": "~1.0.10"
+    "clean-css": "~1.0.10",
+    "underscore": "~1.5.2"
   },
   "peerDependencies": {
     "underscore": "*"
