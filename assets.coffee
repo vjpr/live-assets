@@ -3,6 +3,7 @@ _         = require 'underscore'
 path      = require 'path'
 fs        = require 'fs'
 os        = require 'os'
+url       = require 'url'
 #endregion
 
 class Assets
@@ -28,7 +29,7 @@ class Assets
       # Where assets are served from in production.
       assetServePath: 'http://localhost:3000/assets'
       # The path where Mincer serves assets from in development.
-      localServePath: '/assets'
+      localServePath: '/assets/'
       # If a helper tag causes an error, how should we display it?
       inPageErrorFormat: 'html' # Options: popup | html | none
       # If a helper tag causes an error, should we display a message
@@ -199,14 +200,16 @@ class Assets
     if asset
       # We don't return digests for html pages and when compiling extension
       if @_shouldAppendDigest asset
-        return asset.digestPath
+        return url.resolve @opts.localServePath, asset.digestPath
       else
-        return asset.logicalPath
+        return url.resolve @opts.localServePath, asset.logicalPath
     else
       return @_handleLogicalPathNotFoundError pathname
 
   # Because of circular dependencies. For use in extension manifest.
   assetPathSyncNoCompile: (pathname, cb) =>
+    # TODO: Should we prepend localServePath! Probably.
+
     # TODO: Is this okay? Check if Mincer does other things.
     @env.attributesFor(pathname).pathname
     #pathname
@@ -248,7 +251,13 @@ class Assets
       assetPathAsync: @assetPathAsync
       assetPathNoCompile: @assetPathSyncNoCompile
       mincerEnv: => @env
-      assetDir: (a) => path.dirname @assetPathSync a
+      assetDir: (a) => path.dirname( @assetPathSync(a) ) + '/'
+      'asset-path': @assetPathSync
+      'asset-dir': (a) => path.dirname( @assetPathSync(a) ) + '/'
+      # Suffix is for fonts which have querystrings and hashes which Mincer
+      # doesn't handle.
+      'asset-url': (a, suffix = '') =>
+        "url(#{@assetPathSync(a) + suffix})"
 
   # If a callback is passed in, we run an async version.
   clientHelper: =>
