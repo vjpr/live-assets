@@ -44,6 +44,9 @@ class Assets
       afterAssetsReady: ->
       # Must pass in Mincer. For `npm link` to work properly.
       Mincer: null
+      # Otherwise a message will be displayed to the user.
+      # This is good when you are compiling locally for deploy.
+      crashOnPathNotFoundError: false
 
     @expandTags = @opts.expandTags
     @digest = @opts.digest
@@ -195,16 +198,19 @@ class Assets
   # TODO: Try and move to assetPathAsync in the future.
   # This function is very broken, we don't actually use digests for most assets
   # so things seem like they work.
-  assetPathSync: (pathname, cb) =>
+  assetPathSync: (pathname, throwError) =>
+    rootPath = @opts.assetServePath
+
     asset = @env.findAsset pathname
     if asset
       # We don't return digests for html pages and when compiling extension
       if @_shouldAppendDigest asset
-        return url.resolve @opts.localServePath, asset.digestPath
+        return url.resolve rootPath, asset.digestPath
       else
-        return url.resolve @opts.localServePath, asset.logicalPath
+        return url.resolve rootPath, asset.logicalPath
     else
-      return @_handleLogicalPathNotFoundError pathname
+      return @_handleLogicalPathNotFoundError pathname, null, null,
+        crashOnPathNotFound: throwError
 
   # Because of circular dependencies. For use in extension manifest.
   assetPathSyncNoCompile: (pathname, cb) =>
@@ -231,6 +237,9 @@ class Assets
 
   # Helpers
   # -------
+
+  registerHelper: (obj) =>
+    @env.registerHelper obj
 
   setupHelpers: =>
     # These helpers are accessible in templates as methods
@@ -349,13 +358,18 @@ class Assets
   _prefixPathWithServePath: (paths) =>
     (@opts.assetServePath + p for p in paths)
 
-  _handleLogicalPathNotFoundError: (logicalPath, fileType = 'The', err) ->
+  _handleLogicalPathNotFoundError: (logicalPath, fileType = 'The', err, opts) =>
 
     if err instanceof Error
       return err if @opts.pathsOnly
       # Replace new lines with literal new lines.
       err = err.toString().replace /(\r\n|\n|\r)/gm, '\\n\\n'
       msg = "#{fileType} file #{logicalPath} caused error: \\n\\n#{err}"
+
+      # Blow up if we are compiling for deployment.
+      if @opts.crashOnPathNotFoundError or opts.crashOnPathNotFound
+        console.error "ERROR:", msg
+        do process.exit
 
       return if @opts.inPageErrorFormat is 'none'
       if @opts.inPageErrorFormat is 'html'
@@ -378,6 +392,12 @@ class Assets
         </script>
         """
       else
+
+        # Blow up if we are compiling for deployment.
+        if @opts.crashOnPathNotFoundError or opts.crashOnPathNotFound
+          console.error "ERROR:", msg
+          do process.exit
+
         # TODO: Might deprecate this error format in the future because it is annoying.
         return "<script type='application/javascript'>alert('#{msg}')</script>"
 
@@ -388,6 +408,11 @@ class Assets
       # TODO: Escape logicalPath - see mincer issue
       msg = "#{fileType} file #{JSON.stringify(logicalPath)} not found."
       return err if @opts.pathsOnly
+
+      if @opts.crashOnPathNotFoundError or opts.crashOnPathNotFound
+        console.error "ERROR:", msg
+        do process.exit
+
       return "<script type='application/javascript'>alert('#{msg}')</script>"
 
 module.exports = Assets
