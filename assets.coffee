@@ -217,7 +217,7 @@ class Assets
     # TODO: Should we prepend localServePath! Probably.
 
     # TODO: Is this okay? Check if Mincer does other things.
-    @env.attributesFor(pathname).pathname
+    '/' + @env.attributesFor(pathname).pathname
     #pathname
     #asset = @env.resolve pathname
     #return asset
@@ -248,6 +248,9 @@ class Assets
   getHelpers: =>
     _.extend @opts.helpers,
       js: @clientHelper().js
+      # Don't append serve path.
+      jsRelative: @clientHelper().jsRelative
+      jsBundled: @clientHelper().jsBundled
       css: @clientHelper().css
       asset: @clientHelper().asset
       stylusAssetPath: (pathname) =>
@@ -279,16 +282,19 @@ class Assets
     #   pathsOnly - If true, return an array of paths.
     #   TODO: array - If true, return an array of tags.
     processPaths = (paths, logicalPath, mimetype, tmpl, opts = {}) =>
-      paths = @_prefixPathWithServePath paths
+      opts.prefix ?= true
+      if opts.prefix
+        paths = @_prefixPathWithServePath paths
       if tmpl then tmpl = _.template tmpl
       if opts.pathsOnly
         return ( p for p in paths )
       else
         return (tmpl(path: p) for p in paths).join('\n')
 
-    getPaths = (logicalPath, mimetype, tmpl, opts) =>
+    getPaths = (logicalPath, mimetype, tmpl, opts = {}) =>
       # TODO: Only search for asset of certain mimetype.
-      paths = @_findAssetPathsSync logicalPath, @expandTags
+      expandTags = if opts.expandTags? then opts.expandTags else @expandTags
+      paths = @_findAssetPathsSync logicalPath, expandTags
       return @_handleLogicalPathNotFoundError(logicalPath, mimetype, paths, opts) if not paths or paths instanceof Error
       processPaths paths, logicalPath, mimetype, tmpl, opts
 
@@ -297,6 +303,18 @@ class Assets
       tmpl = "<script type='application/javascript' src='<%= path %>'></script>"
       return getPaths logicalPath, mimetype, tmpl, {}
 
+    jsRelative: (logicalPath) =>
+      mimetype = 'application/javascript'
+      tmpl = "<script type='application/javascript' src='<%= path %>'></script>"
+      return getPaths logicalPath, mimetype, tmpl, prefix: false
+
+    jsBundled: (logicalPath) =>
+      mimetype = 'application/javascript'
+      tmpl = "<script type='application/javascript' src='/<%= path %>'></script>"
+      return getPaths logicalPath, mimetype, tmpl,
+        prefix: false
+        expandTags: false
+
     css: (logicalPath) =>
       mimetype = 'text/css'
       # NOTE: The suppress is only there for IntelliJ to disable faulty inspection.
@@ -304,6 +322,7 @@ class Assets
       return getPaths logicalPath, mimetype, tmpl, {}
 
     # Get path to a single asset.
+    # TODO: This is broken.
     asset: (logicalPath) =>
       mimetype = 'Asset'
       ret = getPaths logicalPath, mimetype, null, {pathsOnly: true}
