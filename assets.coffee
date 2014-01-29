@@ -216,8 +216,10 @@ class Assets
   assetPathSyncNoCompile: (pathname, cb) =>
     # TODO: Should we prepend localServePath! Probably.
 
+    #console.log url.resolve '/', @env.attributesFor(pathname).pathname
+
     # TODO: Is this okay? Check if Mincer does other things.
-    '/' + @env.attributesFor(pathname).pathname
+    url.resolve '/', @env.attributesFor(pathname).pathname
     #pathname
     #asset = @env.resolve pathname
     #return asset
