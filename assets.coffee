@@ -198,17 +198,37 @@ class Assets
   # TODO: Try and move to assetPathAsync in the future.
   # This function is very broken, we don't actually use digests for most assets
   # so things seem like they work.
-  assetPathSync: (pathname, throwError) =>
-    rootPath = @opts.assetServePath
+  #
+  # servePathOverride - For CSS in Chrome extensions we can use
+  #   `chrome-extension://__MSG_@@extension_id__/` as the root path.
+  #
+  assetPathSync: (pathname, throwError, contextPathname) =>
+    rootPath = if _.isFunction @opts.assetServePath
+      @opts.assetServePath pathname, contextPathname
+    else
+      @opts.assetServePath
 
     asset = @env.findAsset pathname
     if asset
       # We don't return digests for html pages and when compiling extension
+
+      #
+      # NOTE: Don't use `url.resolve` when joining with rootPath because it converts
+      # `chrome-extension://__MSG_@@extension_id__` to
+      # `chrome-extension://__MSG_%40@extension_id__`
+      #
+
+      joinPaths = (a, b) ->
+        # TODO: Better checks.
+        a + b
+
       if @_shouldAppendDigest asset
-        return url.resolve rootPath, asset.digestPath
+        return joinPaths rootPath, asset.digestPath
       else
-        return url.resolve rootPath, asset.logicalPath
+        return joinPaths rootPath, asset.logicalPath
+
     else
+
       return @_handleLogicalPathNotFoundError pathname, null, null,
         crashOnPathNotFound: throwError
 
@@ -248,6 +268,7 @@ class Assets
     @env.registerHelper @getHelpers()
 
   getHelpers: =>
+    that = this
     _.extend @opts.helpers,
       js: @clientHelper().js
       # Don't append serve path.
@@ -267,7 +288,20 @@ class Assets
       mincerEnv: => @env
       assetDir: (a) => path.dirname( @assetPathSync(a) ) + '/'
       'asset-path': @assetPathSync
-      'asset-dir': (a) => path.dirname( @assetPathSync(a) ) + '/'
+      'asset-dir': (a) ->
+        # DEBUG
+        #console.log require('util').inspect this,
+        #  showHidden: true
+        #  colors: true
+        #console.log @pathname
+        # This is the pathname of the file the helper is used in:
+        #   @pathname
+        # --
+        # TODO: Add a config flag which takes a function to allow specifying
+        #   when relative paths should be used.
+        #   Use case: Chrome extension development.
+        # --
+        path.dirname( that.assetPathSync(a, null, @pathname) ) + '/'
       # Suffix is for fonts which have querystrings and hashes which Mincer
       # doesn't handle.
       'asset-url': (a, suffix = '') =>
@@ -377,7 +411,13 @@ class Assets
     paths
 
   _prefixPathWithServePath: (paths) =>
-    (@opts.assetServePath + p for p in paths)
+    (for p in paths
+      rootPath = if _.isFunction @opts.assetServePath
+        @opts.assetServePath p
+      else
+        @opts.assetServePath
+      rootPath + p
+    )
 
   _handleLogicalPathNotFoundError: (logicalPath, fileType = 'The', err, opts) =>
 
